@@ -1,0 +1,140 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="panel">
+  <h2>Join Discord Utility</h2>
+  <div class="form">
+    <label>Tokens (One Per Line)</label>
+    <textarea id="tokens" placeholder="Paste Your Discord Tokens Here, One Per Line"></textarea>
+    <button id="startBtn" class="btn primary">Start Join Process</button>
+  </div>
+  
+  <div id="progress" style="display:none; margin-top: 24px;">
+    <h3>Processing Tokens</h3>
+    <div class="progress">
+      <div class="bar" id="progressBar"></div>
+    </div>
+    <div class="percent" id="progressText">0%</div>
+    
+    <div id="results" class="list" style="margin-top: 20px;"></div>
+    
+    <div id="downloadSection" style="display:none; margin-top: 20px;">
+      <button id="downloadBtn" class="btn success">Download Successful Tokens</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentJobId = null;
+let statusInterval = null;
+
+document.getElementById('startBtn').addEventListener('click', async () => {
+  const tokens = document.getElementById('tokens').value.trim();
+  if (!tokens) {
+    alert('Please enter tokens');
+    return;
+  }
+  
+  try {
+    const response = await fetch('/api/joindiscord/start', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ tokens })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      currentJobId = data.job_id;
+      document.getElementById('progress').style.display = 'block';
+      document.getElementById('startBtn').disabled = true;
+      startStatusCheck();
+    } else {
+      alert(data.msg || 'Failed to start process');
+    }
+  } catch (error) {
+    alert('Network error: ' + error.message);
+  }
+});
+
+function startStatusCheck() {
+  if (statusInterval) clearInterval(statusInterval);
+  
+  statusInterval = setInterval(async () => {
+    if (!currentJobId) return;
+    
+    try {
+      const response = await fetch(`/api/joindiscord/status?job_id=${currentJobId}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        updateProgress(data.percent, data.done, data.total);
+        updateResults(data.results);
+        
+        if (data.status === 'finished') {
+          clearInterval(statusInterval);
+          document.getElementById('downloadSection').style.display = 'block';
+          document.getElementById('startBtn').disabled = false;
+        }
+      }
+    } catch (error) {
+      console.error('Status check error:', error);
+    }
+  }, 1000);
+}
+
+function updateProgress(percent, done, total) {
+  document.getElementById('progressBar').style.width = percent + '%';
+  document.getElementById('progressText').textContent = `${percent}% (${done}/${total})`;
+}
+
+function updateResults(results) {
+  const container = document.getElementById('results');
+  container.innerHTML = '';
+  
+  results.forEach(result => {
+    const div = document.createElement('div');
+    div.className = 'item';
+    
+    const tokenPrefix = result.token_prefix;
+    let statusText = '';
+    let statusClass = '';
+    let badges = '';
+    
+    if (result.dead) {
+      statusText = 'Token Dead';
+      statusClass = 'tk-dead';
+    } else if (result.join_success) {
+      statusText = 'Join Trung Gian 247 Success';
+      statusClass = 'tk-live';
+    } else if (result.locked) {
+      statusText = 'Token Locked';
+      statusClass = 'tk-locked';
+    } else if (result.live) {
+      statusText = 'Live but Join Failed';
+      statusClass = 'tk-live';
+    } else {
+      statusText = 'Unknown';
+      statusClass = 'tk-unknown';
+    }
+    
+    div.innerHTML = `
+      <div class="tk-row">
+        <div class="tk-left">${tokenPrefix}...</div>
+        <div class="tk-status ${statusClass}">${statusText}</div>
+        <div class="tk-tags">${badges}</div>
+      </div>
+    `;
+    
+    container.appendChild(div);
+  });
+}
+
+document.getElementById('downloadBtn').addEventListener('click', () => {
+  if (currentJobId) {
+    window.location.href = `/api/joindiscord/download?job_id=${currentJobId}`;
+  }
+});
+
+// CSS styles are already defined globally
+</script>
+{% endblock %}

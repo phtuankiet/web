@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero" id="hero">
+  <h1>Trung Gian 247</h1>
+  <p>Fast key management, optimized for mid-range devices.</p>
+  <div class="actions">
+    {% if user %}
+    <a class="btn primary" href="/product">Go to Product</a>
+    {% elif guest %}
+    <a class="btn primary" href="/product">Go to Product</a>
+    <a class="btn ghost" href="/api/register">Register for Unlimited</a>
+    {% else %}
+    <a class="btn primary" href="/api/login">Next</a>
+    {% endif %}
+  </div>
+</section>
+<script>
+  // No heavy animations
+</script>
+{% endblock %}
+

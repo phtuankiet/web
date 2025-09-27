@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel">
+  <h2>Docs</h2>
+  <div class="docsec">
+    <h3>Check Key</h3>
+    <pre><code>POST /api/checkkey
+Content-Type: application/json
+{
+  "key": "YOUR_KEY"
+}
+
+200 {"success": true, "msg": "Key valid", "expires": "DD/MM/YYYY"}
+404 {"success": false, "msg": "Key not found"}
+410 {"success": false, "msg": "Key expired", "expires": "DD/MM/YYYY"}
+</code></pre>
+    <h4>curl</h4>
+    <pre><code>curl -s -X POST http://localhost:5000/api/checkkey \
+  -H 'Content-Type: application/json' \
+  -d '{"key":"YOUR_KEY"}'
+</code></pre>
+    <h4>python</h4>
+    <pre><code>import requests
+r = requests.post('http://localhost:5000/api/checkkey', json={'key':'YOUR_KEY'})
+print(r.json())
+</code></pre>
+  </div>
+  <div class="docsec">
+    <h3>List Keys</h3>
+    <pre><code>POST /api/listkey
+Content-Type: application/json
+{
+  "email": "you@example.com",
+  "password": "yourpass"
+}
+</code></pre>
+    <h4>curl</h4>
+    <pre><code>curl -s -X POST http://localhost:5000/api/listkey \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"yourpass"}'
+</code></pre>
+    <h4>python</h4>
+    <pre><code>import requests
+r = requests.post('http://localhost:5000/api/listkey', json={'email':'you@example.com','password':'yourpass'})
+print(r.json())
+</code></pre>
+  </div>
+  <div class="docsec">
+    <h3>Edit Key</h3>
+    <pre><code>POST /api/editkey
+Content-Type: application/json
+{
+  "email": "you@example.com",
+  "password": "yourpass",
+  "old_key": "OLD",
+  "new_key": "NEW",
+  "dd/mm/yyyy": "03/02/2000"
+}
+</code></pre>
+    <h4>curl</h4>
+    <pre><code>curl -s -X POST http://localhost:5000/api/editkey \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"yourpass","old_key":"OLD","new_key":"NEW","dd/mm/yyyy":"03/02/2000"}'
+</code></pre>
+    <h4>python</h4>
+    <pre><code>import requests
+payload = {
+  'email':'you@example.com',
+  'password':'yourpass',
+  'old_key':'OLD',
+  'new_key':'NEW',
+  'dd/mm/yyyy':'03/02/2000'
+}
+r = requests.post('http://localhost:5000/api/editkey', json=payload)
+print(r.json())
+</code></pre>
+  </div>
+</section>
+<script></script>
+{% endblock %}
+

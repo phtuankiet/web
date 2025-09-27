@@ -1,0 +1,734 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel">
+  <h2>Mocky</h2>
+  <p>Generate secure links for sharing text content with token-based access.</p>
+  {% if guest %}
+  <div class="guest-notice">
+    <p>👤 Guest Mode - Limited to 5 links. <a href="/api/register">Register</a> for unlimited access.</p>
+  </div>
+  {% endif %}
+  
+  <div class="action-buttons">
+    <button class="btn primary" id="generateBtn">Generated Link Code</button>
+    <button class="btn ghost" id="uploadBtn">Upload Code</button>
+  </div>
+  <div id="genMsg" class="msg"></div>
+
+  <div id="linkForm" class="form" style="display: none;">
+    <label>Content</label>
+    <textarea id="content" placeholder="Enter your text content here..." rows="8" required></textarea>
+    
+    <div class="token-option">
+      <label class="toggle-label">
+        <input type="checkbox" id="requiresToken" checked>
+        <span class="toggle-slider"></span>
+        <span class="toggle-text">Require Token Authentication</span>
+      </label>
+      <p class="toggle-description">If enabled, link requires Authorization header. If disabled, anyone with POST access can view content.</p>
+    </div>
+    
+    <div class="captcha-container">
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAABmKX7pxIzBHd8WS" data-callback="onMockyCaptchaVerify" data-expired-callback="onCaptchaExpired" id="mockyCaptcha"></div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="saveBtn">Save</button>
+      <button class="btn ghost" id="cancelBtn">Cancel</button>
+    </div>
+  </div>
+
+  <div id="uploadForm" class="form" style="display: none;">
+    <label>Upload Code File</label>
+    <div class="upload-area" id="uploadArea">
+      <div class="upload-content">
+        <div class="upload-icon">📁</div>
+        <p>Click to select file or drag & drop</p>
+        <p class="upload-hint">Supports: .txt, .py, .js, .html, .css, .json, .md, .xml, .sql, .sh, .bat</p>
+      </div>
+      <input type="file" id="fileInput" accept=".txt,.py,.js,.html,.css,.json,.md,.xml,.sql,.sh,.bat,.java,.cpp,.c,.php,.rb,.go,.rs,.kt,.swift,.ts,.jsx,.tsx,.vue,.svelte" style="display: none;">
+    </div>
+    <div class="progress" id="uploadProgressWrap" style="display:none;">
+      <div class="bar" id="uploadProgressBar" style="width:0%"></div>
+      <span class="percent" id="uploadPercent">0%</span>
+    </div>
+    <div id="fileInfo" class="file-info" style="display: none;">
+      <div class="file-details">
+        <span class="file-name"></span>
+        <span class="file-size"></span>
+        <button class="btn danger" id="removeFileBtn">Remove</button>
+      </div>
+    </div>
+    <div class="token-option">
+      <label class="toggle-label">
+        <input type="checkbox" id="uploadRequiresToken" checked>
+        <span class="toggle-slider"></span>
+        <span class="toggle-text">Require Token Authentication</span>
+      </label>
+      <p class="toggle-description">If enabled, link requires Authorization header. If disabled, anyone with POST access can view content.</p>
+    </div>
+    
+    <div class="captcha-container">
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAABmKX7pxIzBHd8WS" data-callback="onUploadCaptchaVerify" data-expired-callback="onCaptchaExpired" id="uploadCaptcha"></div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="uploadSaveBtn">Generate Link</button>
+      <button class="btn ghost" id="uploadCancelBtn">Cancel</button>
+    </div>
+  </div>
+
+  <div id="linkResult" style="display: none;">
+    <div class="link-info">
+      <h3>Link Created Successfully!</h3>
+      <div class="link-item">
+        <label>Link:</label>
+        <div class="link-display">
+          <input type="text" id="linkUrl" readonly>
+          <button class="btn ghost" id="copyLinkBtn">Copy Link</button>
+        </div>
+      </div>
+      <div class="link-item">
+        <label>Token:</label>
+        <div class="link-display">
+          <input type="text" id="linkToken" readonly>
+          <button class="btn ghost" id="copyTokenBtn">Copy Token</button>
+        </div>
+      </div>
+      <div class="link-item">
+        <label>Access Type:</label>
+        <div class="access-type" id="accessType">
+          <span class="access-badge token-required">Token Required</span>
+        </div>
+      </div>
+      <div class="usage-info">
+        <h4>Usage:</h4>
+        <div id="usageInstructions">
+          <p>Use POST request with Authorization header:</p>
+          <pre><code>Authorization: Bearer YOUR_TOKEN</code></pre>
+          <p>Example with curl:</p>
+          <pre><code>curl -X POST "YOUR_LINK" -H "Authorization: Bearer YOUR_TOKEN"</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="list" id="linkList"></div>
+</section>
+
+<template id="linkItemTpl">
+  <div class="item">
+    <div class="info">
+      <div class="link-preview"></div>
+      <div class="link-date"></div>
+      <div class="link-token-info"></div>
+    </div>
+    <div class="actions">
+      <button class="btn ghost copy-token" style="display: none;">Copy Token</button>
+      <button class="btn ghost edit">Edit</button>
+      <button class="btn danger del">Delete</button>
+    </div>
+  </div>
+</template>
+
+<div id="editModal" class="modal" style="display: none;">
+  <div class="modal-content dragon-scale phoenix-fire">
+    <div class="modal-header">
+      <h3>Edit Link</h3>
+      <button class="modal-close" id="closeEditModal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="edit-options">
+        <label class="option-label">
+          <input type="radio" name="editType" value="manual" checked>
+          <span class="option-text">Manual Input</span>
+        </label>
+        <label class="option-label">
+          <input type="radio" name="editType" value="upload">
+          <span class="option-text">Upload Code</span>
+        </label>
+      </div>
+      
+      <div id="editManualForm" class="edit-form">
+        <label>Content</label>
+        <textarea id="editContent" placeholder="Enter your text content here..." rows="8" required></textarea>
+      </div>
+      
+      <div id="editUploadForm" class="edit-form" style="display: none;">
+        <label>Upload Code File</label>
+        <div class="upload-area" id="editUploadArea">
+          <div class="upload-content">
+            <div class="upload-icon">📁</div>
+            <p>Click to select file or drag & drop</p>
+            <p class="upload-hint">Supports: .txt, .py, .js, .html, .css, .json, .md, .xml, .sql, .sh, .bat</p>
+          </div>
+          <input type="file" id="editFileInput" accept=".txt,.py,.js,.html,.css,.json,.md,.xml,.sql,.sh,.bat,.java,.cpp,.c,.php,.rb,.go,.rs,.kt,.swift,.ts,.jsx,.tsx,.vue,.svelte" style="display: none;">
+        </div>
+        <div id="editFileInfo" class="file-info" style="display: none;">
+          <div class="file-details">
+            <span class="file-name"></span>
+            <span class="file-size"></span>
+            <button class="btn danger" id="editRemoveFileBtn">Remove</button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="token-option">
+        <label class="toggle-label">
+          <input type="checkbox" id="editRequiresToken" checked>
+          <span class="toggle-slider"></span>
+          <span class="toggle-text">Require Token Authentication</span>
+        </label>
+        <p class="toggle-description">If enabled, link requires Authorization header. If disabled, anyone with POST access can view content.</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn primary" id="saveEditBtn">Save Changes</button>
+      <button class="btn ghost" id="cancelEditBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let mockyCaptchaToken = '';
+let uploadCaptchaToken = '';
+let selectedFile = null;
+
+window.onMockyCaptchaVerify = function(token){ mockyCaptchaToken = token; };
+window.onUploadCaptchaVerify = function(token){ uploadCaptchaToken = token; };
+window.onCaptchaExpired = function(){ 
+  mockyCaptchaToken = ''; 
+  uploadCaptchaToken = '';
+};
+
+document.getElementById('generateBtn').addEventListener('click', () => {
+  document.getElementById('linkForm').style.display = 'block';
+  document.getElementById('uploadForm').style.display = 'none';
+  document.getElementById('linkResult').style.display = 'none';
+});
+
+document.getElementById('uploadBtn').addEventListener('click', () => {
+  document.getElementById('uploadForm').style.display = 'block';
+  document.getElementById('linkForm').style.display = 'none';
+  document.getElementById('linkResult').style.display = 'none';
+});
+
+document.getElementById('cancelBtn').addEventListener('click', () => {
+  document.getElementById('linkForm').style.display = 'none';
+  document.getElementById('content').value = '';
+  mockyCaptchaToken = '';
+  turnstile.reset();
+});
+
+document.getElementById('uploadCancelBtn').addEventListener('click', () => {
+  document.getElementById('uploadForm').style.display = 'none';
+  selectedFile = null;
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileInfo').style.display = 'none';
+  uploadCaptchaToken = '';
+  turnstile.reset();
+});
+
+const uploadArea = document.getElementById('uploadArea');
+const fileInput = document.getElementById('fileInput');
+
+uploadArea.addEventListener('click', () => fileInput.click());
+
+uploadArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadArea.classList.add('drag-over');
+});
+
+uploadArea.addEventListener('dragleave', () => {
+  uploadArea.classList.remove('drag-over');
+});
+
+uploadArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadArea.classList.remove('drag-over');
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    handleFileSelect(files[0]);
+  }
+});
+
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files.length > 0) {
+    handleFileSelect(e.target.files[0]);
+  }
+});
+
+function handleFileSelect(file) {
+  const allowedTypes = ['.txt', '.py', '.js', '.html', '.css', '.json', '.md', '.xml', '.sql', '.sh', '.bat', '.java', '.cpp', '.c', '.php', '.rb', '.go', '.rs', '.kt', '.swift', '.ts', '.jsx', '.tsx', '.vue', '.svelte'];
+  const fileExt = '.' + file.name.split('.').pop().toLowerCase();
+  
+  if (!allowedTypes.includes(fileExt)) {
+    alert('File type not supported. Please select a text/code file.');
+    return;
+  }
+  
+  if (file.size > 5 * 1024 * 1024) {
+    alert('File too large. Maximum size is 5MB.');
+    return;
+  }
+  
+  selectedFile = file;
+  document.getElementById('fileInfo').style.display = 'block';
+  document.querySelector('.file-name').textContent = file.name;
+  document.querySelector('.file-size').textContent = formatFileSize(file.size);
+}
+
+document.getElementById('removeFileBtn').addEventListener('click', () => {
+  selectedFile = null;
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileInfo').style.display = 'none';
+});
+
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  if (!mockyCaptchaToken) {
+    document.getElementById('genMsg').textContent = 'Please complete captcha first';
+    document.getElementById('genMsg').className = 'msg error';
+    return;
+  }
+  const content = document.getElementById('content').value.trim();
+  if (!content) {
+    document.getElementById('genMsg').textContent = 'Content is required';
+    document.getElementById('genMsg').className = 'msg error';
+    return;
+  }
+  
+  const requiresToken = document.getElementById('requiresToken').checked;
+  
+  const r = await fetch('/api/mocky', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({content, captcha: mockyCaptchaToken, requires_token: requiresToken})
+  });
+  
+  const j = await r.json();
+  const msgEl = document.getElementById('genMsg');
+  msgEl.textContent = j.msg || (j.success ? 'Link created successfully!' : 'Error occurred');
+  msgEl.className = 'msg ' + (j.success ? 'success' : 'error');
+  
+  if (j.success) {
+    document.getElementById('linkForm').style.display = 'none';
+    document.getElementById('linkResult').style.display = 'block';
+    document.getElementById('linkUrl').value = window.location.origin + '/m/' + j.link_id;
+    document.getElementById('linkToken').value = j.token || 'No token required';
+    
+    const accessType = document.getElementById('accessType');
+    const usageInstructions = document.getElementById('usageInstructions');
+    
+    if (j.requires_token) {
+      accessType.innerHTML = '<span class="access-badge token-required">Token Required</span>';
+      usageInstructions.innerHTML = `
+        <p>Use POST request with Authorization header:</p>
+        <pre><code>Authorization: Bearer YOUR_TOKEN</code></pre>
+        <p>Example with curl:</p>
+        <pre><code>curl -X POST "YOUR_LINK" -H "Authorization: Bearer YOUR_TOKEN"</code></pre>
+      `;
+    } else {
+      accessType.innerHTML = '<span class="access-badge no-token">No Token Required</span>';
+      usageInstructions.innerHTML = `
+        <p>Use POST request (no authorization needed):</p>
+        <pre><code>curl -X POST "YOUR_LINK"</code></pre>
+        <p>Anyone with the link can access the content via POST request.</p>
+      `;
+    }
+    
+    document.getElementById('content').value = '';
+    mockyCaptchaToken = '';
+    turnstile.reset();
+    loadLinks();
+    
+  }
+});
+
+document.getElementById('uploadSaveBtn').addEventListener('click', async () => {
+  if (!selectedFile) {
+    document.getElementById('genMsg').textContent = 'Please select a file first';
+    document.getElementById('genMsg').className = 'msg error';
+    return;
+  }
+  if (!uploadCaptchaToken) {
+    document.getElementById('genMsg').textContent = 'Please complete captcha first';
+    document.getElementById('genMsg').className = 'msg error';
+    return;
+  }
+
+  const requiresToken = document.getElementById('uploadRequiresToken').checked;
+  const externalBase = 'https://phtuankiet.x10.mx/uploadfile';
+  const upXhr = new XMLHttpRequest();
+  upXhr.open('POST', externalBase);
+  const extFd = new FormData();
+  extFd.append('file', selectedFile);
+  upXhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) {
+      const percent = Math.round((e.loaded / e.total) * 100);
+      document.getElementById('uploadProgressWrap').style.display = 'block';
+      document.getElementById('uploadProgressBar').style.width = percent + '%';
+      document.getElementById('uploadPercent').textContent = percent + '%';
+    }
+  };
+  upXhr.onerror = () => {
+    document.getElementById('genMsg').textContent = 'External upload failed';
+    document.getElementById('genMsg').className = 'msg error';
+  };
+  upXhr.onload = async () => {
+    if (upXhr.status >= 200 && upXhr.status < 300 && (upXhr.responseText.startsWith('http://') || upXhr.responseText.startsWith('https://'))) {
+      const externalUrl = upXhr.responseText.trim();
+      const fd2 = new FormData();
+      fd2.append('captcha', uploadCaptchaToken);
+      fd2.append('requires_token', requiresToken);
+      fd2.append('external_url', externalUrl);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/mocky');
+      xhr.onload = async () => {
+        let j = {};
+        try { j = JSON.parse(xhr.responseText || '{}'); } catch (_) {}
+        const msgEl = document.getElementById('genMsg');
+        msgEl.textContent = j.msg || (j.success ? 'Link created successfully!' : `Error ${xhr.status || ''}`.trim());
+        msgEl.className = 'msg ' + (j.success ? 'success' : 'error');
+        if (j.success) {
+          document.getElementById('uploadForm').style.display = 'none';
+          document.getElementById('linkResult').style.display = 'block';
+          document.getElementById('linkUrl').value = window.location.origin + '/m/' + j.link_id;
+          document.getElementById('linkToken').value = j.token || 'No token required';
+          const accessType = document.getElementById('accessType');
+          const usageInstructions = document.getElementById('usageInstructions');
+          if (j.requires_token) {
+            accessType.innerHTML = '<span class="access-badge token-required">Token Required</span>';
+            usageInstructions.innerHTML = `
+              <p>Use POST request with Authorization header:</p>
+              <pre><code>Authorization: Bearer YOUR_TOKEN</code></pre>
+              <p>Example with curl:</p>
+              <pre><code>curl -X POST "YOUR_LINK" -H "Authorization: Bearer YOUR_TOKEN"</code></pre>
+            `;
+          } else {
+            accessType.innerHTML = '<span class="access-badge no-token">No Token Required</span>';
+            usageInstructions.innerHTML = `
+              <p>Use POST request (no authorization needed):</p>
+              <pre><code>curl -X POST "YOUR_LINK"</code></pre>
+              <p>Anyone with the link can access the content via POST request.</p>
+            `;
+          }
+          selectedFile = null;
+          document.getElementById('fileInput').value = '';
+          document.getElementById('fileInfo').style.display = 'none';
+          uploadCaptchaToken = '';
+          turnstile.reset();
+          loadLinks();
+        }
+        document.getElementById('uploadProgressWrap').style.display = 'none';
+        document.getElementById('uploadProgressBar').style.width = '0%';
+        document.getElementById('uploadPercent').textContent = '0%';
+      };
+      xhr.onerror = () => {
+        document.getElementById('genMsg').textContent = 'Create link failed';
+        document.getElementById('genMsg').className = 'msg error';
+      };
+      xhr.send(fd2);
+    } else {
+      const body = (upXhr.responseText || '').slice(0, 180);
+      document.getElementById('genMsg').textContent = `External upload failed (${upXhr.status}). ${body}`;
+      document.getElementById('genMsg').className = 'msg error';
+    }
+  };
+  upXhr.send(extFd);
+  xhr.timeout = 45000;
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) {
+      const percent = Math.round((e.loaded / e.total) * 100);
+      document.getElementById('uploadProgressWrap').style.display = 'block';
+      document.getElementById('uploadProgressBar').style.width = percent + '%';
+      document.getElementById('uploadPercent').textContent = percent + '%';
+    }
+  };
+  xhr.onload = async () => {
+    let j = {};
+    try { j = JSON.parse(xhr.responseText || '{}'); } catch (_) {}
+    const msgEl = document.getElementById('genMsg');
+    msgEl.textContent = j.msg || (j.success ? 'Link created successfully!' : `Error ${xhr.status || ''}`.trim());
+    msgEl.className = 'msg ' + (j.success ? 'success' : 'error');
+    if (j.success) {
+      document.getElementById('uploadForm').style.display = 'none';
+      document.getElementById('linkResult').style.display = 'block';
+      document.getElementById('linkUrl').value = window.location.origin + '/m/' + j.link_id;
+      document.getElementById('linkToken').value = j.token || 'No token required';
+      const accessType = document.getElementById('accessType');
+      const usageInstructions = document.getElementById('usageInstructions');
+      if (j.requires_token) {
+        accessType.innerHTML = '<span class="access-badge token-required">Token Required</span>';
+        usageInstructions.innerHTML = `
+          <p>Use POST request with Authorization header:</p>
+          <pre><code>Authorization: Bearer YOUR_TOKEN</code></pre>
+          <p>Example with curl:</p>
+          <pre><code>curl -X POST "YOUR_LINK" -H "Authorization: Bearer YOUR_TOKEN"</code></pre>
+        `;
+      } else {
+        accessType.innerHTML = '<span class="access-badge no-token">No Token Required</span>';
+        usageInstructions.innerHTML = `
+          <p>Use POST request (no authorization needed):</p>
+          <pre><code>curl -X POST "YOUR_LINK"</code></pre>
+          <p>Anyone with the link can access the content via POST request.</p>
+        `;
+      }
+      selectedFile = null;
+      document.getElementById('fileInput').value = '';
+      document.getElementById('fileInfo').style.display = 'none';
+      uploadCaptchaToken = '';
+      turnstile.reset();
+      loadLinks();
+    }
+    document.getElementById('uploadProgressWrap').style.display = 'none';
+    document.getElementById('uploadProgressBar').style.width = '0%';
+    document.getElementById('uploadPercent').textContent = '0%';
+  };
+  xhr.onerror = () => {
+    document.getElementById('genMsg').textContent = `Network error`;
+    document.getElementById('genMsg').className = 'msg error';
+    document.getElementById('uploadProgressWrap').style.display = 'none';
+    document.getElementById('uploadProgressBar').style.width = '0%';
+    document.getElementById('uploadPercent').textContent = '0%';
+  };
+  xhr.ontimeout = () => {
+    document.getElementById('genMsg').textContent = 'Request timed out';
+    document.getElementById('genMsg').className = 'msg error';
+    document.getElementById('uploadProgressWrap').style.display = 'none';
+    document.getElementById('uploadProgressBar').style.width = '0%';
+    document.getElementById('uploadPercent').textContent = '0%';
+  };
+  xhr.send(formData);
+});
+
+document.getElementById('copyLinkBtn').addEventListener('click', () => {
+  const input = document.getElementById('linkUrl');
+  input.select();
+  document.execCommand('copy');
+  const btn = document.getElementById('copyLinkBtn');
+  const originalText = btn.textContent;
+  btn.textContent = 'Copied!';
+  setTimeout(() => btn.textContent = originalText, 2000);
+});
+
+document.getElementById('copyTokenBtn').addEventListener('click', () => {
+  const input = document.getElementById('linkToken');
+  input.select();
+  document.execCommand('copy');
+  const btn = document.getElementById('copyTokenBtn');
+  const originalText = btn.textContent;
+  btn.textContent = 'Copied!';
+  setTimeout(() => btn.textContent = originalText, 2000);
+});
+
+let currentEditLink = null;
+let editSelectedFile = null;
+
+async function loadLinks() {
+  const r = await fetch('/api/mocky');
+  if (!r.ok) return;
+  const data = await r.json();
+  const c = document.getElementById('linkList');
+  c.innerHTML = '';
+  data.forEach(l => {
+    const t = document.getElementById('linkItemTpl').content.cloneNode(true);
+    const linkUrl = window.location.origin + '/m/' + l.link_id;
+    t.querySelector('.link-preview').textContent = linkUrl;
+    t.querySelector('.link-date').textContent = l.created_at;
+    
+    const tokenInfo = t.querySelector('.link-token-info');
+    const copyTokenBtn = t.querySelector('.copy-token');
+    
+    if (l.requires_token) {
+      tokenInfo.innerHTML = '<span class="access-badge token-required">Token Required</span>';
+      copyTokenBtn.style.display = 'inline-block';
+      copyTokenBtn.onclick = () => {
+        navigator.clipboard.writeText(l.token || 'No token available');
+        const originalText = copyTokenBtn.textContent;
+        copyTokenBtn.textContent = 'Copied!';
+        setTimeout(() => copyTokenBtn.textContent = originalText, 2000);
+      };
+    } else {
+      tokenInfo.innerHTML = '<span class="access-badge no-token">No Token Required</span>';
+    }
+    
+    t.querySelector('.edit').onclick = () => openEditModal(l);
+    t.querySelector('.del').onclick = async () => {
+      if (confirm('Delete this link?')) {
+        const rr = await fetch('/api/mocky/' + l.id, {method: 'DELETE'});
+        if (rr.ok) loadLinks();
+      }
+    };
+    c.appendChild(t);
+  });
+  
+}
+
+function openEditModal(link) {
+  currentEditLink = link;
+  document.getElementById('editModal').style.display = 'block';
+  document.getElementById('editContent').value = link.content;
+  document.getElementById('editRequiresToken').checked = link.requires_token;
+  
+  // Reset forms
+  document.getElementById('editManualForm').style.display = 'block';
+  document.getElementById('editUploadForm').style.display = 'none';
+  document.querySelector('input[name="editType"][value="manual"]').checked = true;
+  editSelectedFile = null;
+  document.getElementById('editFileInput').value = '';
+  document.getElementById('editFileInfo').style.display = 'none';
+  
+  
+}
+
+// Edit modal functionality
+document.getElementById('closeEditModal').addEventListener('click', closeEditModal);
+document.getElementById('cancelEditBtn').addEventListener('click', closeEditModal);
+
+document.querySelectorAll('input[name="editType"]').forEach(radio => {
+  radio.addEventListener('change', (e) => {
+    if (e.target.value === 'manual') {
+      document.getElementById('editManualForm').style.display = 'block';
+      document.getElementById('editUploadForm').style.display = 'none';
+    } else {
+      document.getElementById('editManualForm').style.display = 'none';
+      document.getElementById('editUploadForm').style.display = 'block';
+    }
+  });
+});
+
+// Edit file upload functionality
+const editUploadArea = document.getElementById('editUploadArea');
+const editFileInput = document.getElementById('editFileInput');
+
+editUploadArea.addEventListener('click', () => editFileInput.click());
+
+editUploadArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  editUploadArea.classList.add('drag-over');
+});
+
+editUploadArea.addEventListener('dragleave', () => {
+  editUploadArea.classList.remove('drag-over');
+});
+
+editUploadArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  editUploadArea.classList.remove('drag-over');
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    handleEditFileSelect(files[0]);
+  }
+});
+
+editFileInput.addEventListener('change', (e) => {
+  if (e.target.files.length > 0) {
+    handleEditFileSelect(e.target.files[0]);
+  }
+});
+
+function handleEditFileSelect(file) {
+  const allowedTypes = ['.txt', '.py', '.js', '.html', '.css', '.json', '.md', '.xml', '.sql', '.sh', '.bat', '.java', '.cpp', '.c', '.php', '.rb', '.go', '.rs', '.kt', '.swift', '.ts', '.jsx', '.tsx', '.vue', '.svelte'];
+  const fileExt = '.' + file.name.split('.').pop().toLowerCase();
+  
+  if (!allowedTypes.includes(fileExt)) {
+    alert('File type not supported. Please select a text/code file.');
+    return;
+  }
+  
+  if (file.size > 5 * 1024 * 1024) {
+    alert('File too large. Maximum size is 5MB.');
+    return;
+  }
+  
+  editSelectedFile = file;
+  document.getElementById('editFileInfo').style.display = 'block';
+  document.querySelector('#editFileInfo .file-name').textContent = file.name;
+  document.querySelector('#editFileInfo .file-size').textContent = formatFileSize(file.size);
+}
+
+document.getElementById('editRemoveFileBtn').addEventListener('click', () => {
+  editSelectedFile = null;
+  document.getElementById('editFileInput').value = '';
+  document.getElementById('editFileInfo').style.display = 'none';
+});
+
+document.getElementById('saveEditBtn').addEventListener('click', async () => {
+  if (!currentEditLink) return;
+  
+  let content = '';
+  const editType = document.querySelector('input[name="editType"]:checked').value;
+  
+  if (editType === 'manual') {
+    content = document.getElementById('editContent').value.trim();
+  } else {
+    if (!editSelectedFile) {
+      alert('Please select a file first');
+      return;
+    }
+    const up = new FormData();
+    up.append('file', editSelectedFile);
+    const extXhr = new XMLHttpRequest();
+    extXhr.open('POST', 'https://phtuankiet.x10.mx/uploadfile');
+    extXhr.onload = async () => {
+      if (extXhr.status >= 200 && extXhr.status < 300 && (extXhr.responseText.startsWith('http://') || extXhr.responseText.startsWith('https://'))) {
+        const externalUrl = extXhr.responseText.trim();
+        await saveEdit('', externalUrl);
+      } else {
+        alert('External upload failed while editing');
+      }
+    };
+    extXhr.onerror = () => alert('External upload failed while editing');
+    extXhr.send(up);
+    return;
+  }
+  
+  await saveEdit(content, '');
+});
+
+async function saveEdit(content, externalUrl='') {
+  if (!content) {
+    if (!externalUrl) { alert('Content is required'); return; }
+  }
+  
+  const requiresToken = document.getElementById('editRequiresToken').checked;
+  
+  const isExternal = !!externalUrl;
+  let r;
+  if (isExternal) {
+    const fd = new FormData();
+    fd.append('requires_token', requiresToken);
+    fd.append('external_url', externalUrl);
+    r = await fetch('/api/mocky/' + currentEditLink.id, { method: 'PUT', body: fd });
+  } else {
+    r = await fetch('/api/mocky/' + currentEditLink.id, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ content: content, requires_token: requiresToken })
+    });
+  }
+  
+  const j = await r.json();
+  if (j.success) {
+    closeEditModal();
+    loadLinks();
+  } else {
+    alert('Error updating link: ' + (j.msg || 'Unknown error'));
+  }
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').style.display = 'none';
+  currentEditLink = null;
+  editSelectedFile = null;
+}
+
+loadLinks();
+</script>
+{% endblock %}

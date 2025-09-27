@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel">
+  <h2>Check Token Discord</h2>
+  <p>Enter one token per line.</p>
+  <div class="form">
+    <label>Enter Token:</label>
+    <textarea id="tokens" rows="8" placeholder="One token per line"></textarea>
+    <div class="actions">
+      <button class="btn primary" id="startBtn">Submit</button>
+    </div>
+    <div id="msg" class="msg"></div>
+  </div>
+
+  <div id="progress" style="display:none;margin-top:16px;">
+    <div class="progress"><div class="bar" id="progBar" style="width:0%"></div></div>
+    <div style="margin-top:6px;" id="progText">0%</div>
+  </div>
+
+  <div id="results" class="list" style="margin-top:16px;"></div>
+  <div id="downloadWrap" style="display:none;margin-top:12px;">
+    <a id="downloadLive" class="btn primary" href="#">Download Token Live</a>
+  </div>
+</section>
+<script>
+let jobId = '';
+let poll = null;
+
+document.getElementById('startBtn').addEventListener('click', async ()=>{
+  const tokens = document.getElementById('tokens').value.trim();
+  if(!tokens){ setMsg('Please enter tokens', true); return; }
+  stopPoll();
+  setProgress(0); showProgress(true);
+  setMsg('');
+  const r = await fetch('/api/checktoken/start', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({tokens})});
+  const j = await r.json();
+  if(!j.success){ setMsg(j.msg||'Start failed', true); showProgress(false); return; }
+  jobId = j.job_id; setMsg('Started');
+  poll = setInterval(checkStatus, 1200);
+});
+
+async function checkStatus(){
+  const r = await fetch('/api/checktoken/status?job_id='+encodeURIComponent(jobId));
+  if(!r.ok){ stopPoll(); setMsg('Status error', true); return; }
+  const j = await r.json();
+  if(!j.success){ stopPoll(); setMsg('Status failed', true); return; }
+  setProgress(j.percent);
+  renderResults(j.results||[]);
+  if(j.status==='finished'){
+    stopPoll();
+    setMsg('Completed');
+    document.getElementById('downloadWrap').style.display='block';
+    document.getElementById('downloadLive').href = '/api/checktoken/download?job_id='+encodeURIComponent(jobId);
+  }
+}
+
+function renderResults(items){
+  const c = document.getElementById('results');
+  c.innerHTML = '';
+  items.forEach(it=>{
+    const row = document.createElement('div');
+    row.className = 'item';
+    const info = document.createElement('div');
+    info.className = 'info';
+    const left = document.createElement('div');
+    left.className = 'tk-left';
+    left.textContent = (it.token_prefix||'').padEnd(15,'•');
+    const status = document.createElement('div');
+    status.className = 'tk-status';
+    status.textContent = it.live? 'Live' : (it.locked? 'Locked' : (it.unknown? 'Unknown' : 'Die'));
+    status.style.color = it.live? '#4caf50' : (it.locked? '#ffc107' : (it.unknown? '#8bb5c0' : '#ff4060'));
+    const tags = document.createElement('div');
+    tags.className = 'tk-tags';
+    const e = document.createElement('span'); e.textContent='Email'; e.className = 'tk-badge'; e.style.color = it.email_verified? '#4caf50':'#ff4060';
+    const p = document.createElement('span'); p.textContent='Phone'; p.className = 'tk-badge'; p.style.color = it.phone_verified? '#4caf50':'#ff4060';
+    info.className = 'info tk-row'; info.append(left,status,tags); tags.append(e,p);
+    row.appendChild(info);
+    c.appendChild(row);
+  });
+}
+
+function setMsg(t, err=false){ const m=document.getElementById('msg'); m.textContent=t; m.className='msg '+(err?'error':''); }
+function setProgress(p){ document.getElementById('progBar').style.width = (p||0)+'%'; document.getElementById('progText').textContent=(p||0)+'%'; }
+function showProgress(s){ document.getElementById('progress').style.display = s?'block':'none'; }
+function stopPoll(){ if(poll){ clearInterval(poll); poll=null; } }
+</script>
+{% endblock %}
+

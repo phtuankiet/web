@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel">
+  <h2>Product</h2>
+  {% if guest %}
+  <div class="guest-notice">
+    <p>👤 Guest Mode - Limited to 5 keys. <a href="/api/register">Register</a> for unlimited access.</p>
+  </div>
+  {% endif %}
+  <form id="genForm" class="form row">
+    <div>
+      <label>Enter Key</label>
+      <input id="keyName" placeholder="Enter Key" required>
+    </div>
+    <div>
+      <label>DD/MM/YYYY</label>
+      <input id="dateStr" placeholder="Select DD/MM/YYYY" required>
+    </div>
+    <div class="captcha-container small">
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAABmKX7pxIzBHd8WS" data-callback="onKeyCaptchaVerify" data-expired-callback="onCaptchaExpired" id="keyCaptcha"></div>
+    </div>
+    <button class="btn primary" type="submit">Generate</button>
+  </form>
+  <div id="genMsg" class="msg"></div>
+
+  <div class="list" id="keyList"></div>
+</section>
+<template id="keyItemTpl">
+  <div class="item">
+    <div class="info"><span class="k"></span><span class="d"></span></div>
+    <div class="actions">
+      <button class="btn ghost edit">Edit</button>
+      <button class="btn danger del">Delete</button>
+    </div>
+  </div>
+  </template>
+<script>
+  let keyCaptchaToken='';
+  window.onKeyCaptchaVerify=function(token){ keyCaptchaToken=token };
+  window.onCaptchaExpired=function(){ keyCaptchaToken='' };
+  async function loadKeys(){
+    const r = await fetch('/api/keys');
+    if(!r.ok) return;
+    const data = await r.json();
+    const c = document.getElementById('keyList');
+    c.innerHTML='';
+    data.forEach(k=>{
+      const t = document.getElementById('keyItemTpl').content.cloneNode(true);
+      t.querySelector('.k').textContent = k.key;
+      t.querySelector('.d').textContent = k['dd/mm/yyyy'];
+      t.querySelector('.edit').onclick = async ()=>{
+        const newKey = prompt('New key', k.key) || '';
+        const newDate = prompt('New date DD/MM/YYYY', k['dd/mm/yyyy']) || '';
+        const rr = await fetch('/api/keys/'+k.id, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({key:newKey, date:newDate})});
+        if(rr.ok) loadKeys();
+      }
+      t.querySelector('.del').onclick = async ()=>{
+        const rr = await fetch('/api/keys/'+k.id, {method:'DELETE'});
+        if(rr.ok) loadKeys();
+      }
+      c.appendChild(t);
+    })
+  }
+  document.getElementById('genForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    if(!keyCaptchaToken){
+      const msgEl = document.getElementById('genMsg');
+      msgEl.textContent = 'Please complete captcha first';
+      msgEl.className = 'msg error';
+      return;
+    }
+    const key = document.getElementById('keyName').value.trim();
+    const dateStr = document.getElementById('dateStr').value.trim();
+    const r = await fetch('/api/keys', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({key, date: dateStr, captcha: keyCaptchaToken})});
+    const j = await r.json();
+    const msgEl = document.getElementById('genMsg');
+    msgEl.textContent = j.msg || (j.success?'Key created successfully!':'Error occurred');
+    msgEl.className = 'msg ' + (j.success? 'success':'error');
+    if(j.success){
+      document.getElementById('keyName').value='';
+      document.getElementById('dateStr').value='';
+      loadKeys();
+    }
+  });
+  loadKeys();
+  
+</script>
+{% endblock %}
+

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title or 'Trung Gian 247' }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <script>
+    (function() {
+      let devtools = false;
+      const threshold = 160;
+      
+      setInterval(function() {
+        if (window.outerHeight - window.innerHeight > threshold || 
+            window.outerWidth - window.innerWidth > threshold) {
+          if (!devtools) {
+            devtools = true;
+            document.dispatchEvent(new CustomEvent('devtools-detected'));
+          }
+        } else {
+          devtools = false;
+        }
+      }, 500);
+      
+      document.addEventListener('devtools-detected', function() {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/captcha', false);
+        xhr.setRequestHeader('X-Devtools-Detected', 'true');
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.send(JSON.stringify({action: 'devtools-detected'}));
+        
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:Arial;color:#ff4444;"><h1>Access Denied</h1></div>';
+      });
+      
+      const originalFetch = window.fetch;
+      window.fetch = function(...args) {
+        if (devtools) {
+          return Promise.reject(new Error('Access Denied'));
+        }
+        return originalFetch.apply(this, args);
+      };
+      
+      const originalXHR = window.XMLHttpRequest;
+      window.XMLHttpRequest = function() {
+        const xhr = new originalXHR();
+        const originalOpen = xhr.open;
+        xhr.open = function(...args) {
+          if (devtools) {
+            throw new Error('Access Denied');
+          }
+          return originalOpen.apply(this, args);
+        };
+        return xhr;
+      };
+    })();
+  </script>
+</head>
+<body>
+  <nav class="topbar">
+    <div class="brand" onclick="location.href='/'">Trung Gian 247</div>
+    <div class="menu">
+      {% if user %}
+      <button id="logoutBtn" class="btn ghost">Logout</button>
+      {% elif guest %}
+      <span class="guest-badge">Guest</span>
+      <a href="/api/login">Login</a>
+      <a href="/api/register">Register</a>
+      {% else %}
+      <a href="/api/login">Login</a>
+      <a href="/api/register">Register</a>
+      {% endif %}
+      <div class="burger" id="burger">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="dropdown-menu" id="moreMenu" aria-hidden="true">
+        <a href="/docs">Docs</a>
+        <a href="/api/joindiscord">Utility Join Trung Gian 247</a>
+        <a href="/product">Product</a>
+        <a href="/api/checktoken">Check Token</a>
+        <a href="/mocky">Mocky</a>
+      </div>
+    </div>
+  </nav>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    (function(){
+      const burger = document.getElementById('burger');
+      const menu = document.getElementById('moreMenu');
+      function open(){ menu.classList.add('open'); menu.setAttribute('aria-hidden','false'); }
+      function close(){ menu.classList.remove('open'); menu.setAttribute('aria-hidden','true'); }
+      function toggle(){ menu.classList.contains('open') ? close() : open(); }
+      function outside(e){ if(!menu.contains(e.target) && !burger.contains(e.target)){ close(); } }
+      burger.addEventListener('click', toggle);
+      document.addEventListener('click', outside);
+      window.addEventListener('resize', close);
+    })();
+  </script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
+

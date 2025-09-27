@@ -1,0 +1,111 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel">
+  <h2>Register</h2>
+  <form id="regForm" class="form">
+    <label>Email</label>
+    <input type="email" id="email" required>
+    <label>Password</label>
+    <input type="password" id="password" required>
+    <div class="captcha-container">
+      <button class="btn ghost" id="getCaptchaBtn" type="button">Get Captcha</button>
+      <div id="captchaStatus" class="captcha-status"></div>
+    </div>
+    <button class="btn primary" type="submit">Register</button>
+  </form>
+  <div id="regMsg" class="msg"></div>
+</section>
+<script>
+  let regCaptchaToken = '';
+  let captchaVerified = false;
+  
+  document.getElementById('getCaptchaBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('getCaptchaBtn');
+    const status = document.getElementById('captchaStatus');
+    
+    btn.textContent = 'Loading...';
+    btn.disabled = true;
+    
+    try {
+      const turnstileWidget = document.createElement('div');
+      turnstileWidget.className = 'cf-turnstile';
+      turnstileWidget.setAttribute('data-sitekey', '0x4AAAAAABmKX7pxIzBHd8WS');
+      turnstileWidget.setAttribute('data-callback', 'onRegCaptchaVerify');
+      turnstileWidget.setAttribute('data-expired-callback', 'onCaptchaExpired');
+      turnstileWidget.id = 'regCaptcha';
+      
+      status.innerHTML = '';
+      status.appendChild(turnstileWidget);
+      
+      if (typeof turnstile !== 'undefined') {
+        turnstile.render(turnstileWidget);
+      }
+      
+      btn.textContent = 'Get Captcha';
+      btn.disabled = false;
+    } catch (error) {
+      status.textContent = 'Failed to load captcha';
+      btn.textContent = 'Get Captcha';
+      btn.disabled = false;
+    }
+  });
+  
+  window.onRegCaptchaVerify = async function(token) {
+    regCaptchaToken = token;
+    const status = document.getElementById('captchaStatus');
+    status.textContent = 'Verifying...';
+    
+    try {
+      const r = await fetch('/api/captcha', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({token, action: 'register'})
+      });
+      const j = await r.json();
+      
+      if (j.success) {
+        status.textContent = '✅ Captcha verified';
+        status.className = 'captcha-status success';
+        captchaVerified = true;
+      } else {
+        status.textContent = '❌ Captcha failed';
+        status.className = 'captcha-status error';
+        captchaVerified = false;
+      }
+    } catch (error) {
+      status.textContent = '❌ Verification failed';
+      status.className = 'captcha-status error';
+      captchaVerified = false;
+    }
+  };
+  
+  window.onCaptchaExpired = function() {
+    regCaptchaToken = '';
+    captchaVerified = false;
+    document.getElementById('captchaStatus').textContent = 'Captcha expired';
+    document.getElementById('captchaStatus').className = 'captcha-status';
+  };
+  
+  const f = document.getElementById('regForm');
+  f.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    
+    if (!captchaVerified) {
+      document.getElementById('regMsg').textContent = 'Please verify captcha first';
+      document.getElementById('regMsg').className = 'msg error';
+      return;
+    }
+    
+    const email = document.getElementById('email').value.trim().toLowerCase();
+    const password = document.getElementById('password').value;
+    const r = await fetch('/api/register', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email, password, captcha: regCaptchaToken})});
+    const j = await r.json();
+    const msgEl = document.getElementById('regMsg');
+    msgEl.textContent = j.msg || (j.success? 'Registration successful!':'Error occurred');
+    msgEl.className = 'msg ' + (j.success? 'success':'error');
+    if(j.success){ location.href = '/product'; }
+  });
+          
+</script>
+{% endblock %}
+
